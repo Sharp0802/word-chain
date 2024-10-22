@@ -4,3 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bitflags = "2"
+dotenvy = "0"
+hyper = { version = "1", features = ["full"] }
+http-body-util = "0.1"
+hyper-util = { version = "0.1", features = ["full"] }
+lazy_static = "1"
+serde = { version = "1", features = ["derive"] }
+serde_urlencoded = "0"
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = "0"
