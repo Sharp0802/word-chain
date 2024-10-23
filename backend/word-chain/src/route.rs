@@ -1,16 +1,22 @@
-use std::error::Error;
 use http_body_util::Full;
-use hyper::{Method, Request, Response};
 use hyper::body::{Bytes, Incoming};
+use hyper::{Request, Response};
+use std::error::Error;
+use std::future::Future;
+use std::pin::Pin;
+
+pub type FuturePreparation<'a> = Pin<Box<dyn Future<Output=Result<(), Box<dyn Error + 'a>>> + Send + 'a>>;
+pub type FutureAction<'a> = Pin<Box<dyn Future<Output=Result<Response<Full<Bytes>>, Box<dyn Error + 'a>>> + Send + 'a>>;
 
 pub trait Route {
     fn name(&self) -> &str;
-    fn method(&self) -> Vec<Method>;
     fn children(&self) -> Vec<&dyn Route>;
-    async fn map(&self, req: Request<Incoming>) -> Result<Response<Full<Bytes>>, Box<dyn Error>> where Self: Sized;
+    fn up(&self) -> FuturePreparation;
+    fn down(&self) -> FuturePreparation;
+    fn map(&self, req: Request<Incoming>) -> FutureAction;
 }
 
-pub fn match_route<'a>(path: &'a str, root: &'a dyn Route) -> Option<&'a dyn Route> {
+pub fn match_route<'a>(path: &str, root: &'a dyn Route) -> Option<&'a dyn Route> {
     let segments = path.split('/').skip(1).collect::<Vec<&str>>();
 
     let mut current = root;
@@ -33,8 +39,8 @@ pub fn match_route<'a>(path: &'a str, root: &'a dyn Route) -> Option<&'a dyn Rou
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
     use super::*;
+    use std::vec;
 
     struct RootRoute {}
     struct RouteA {}
@@ -43,19 +49,24 @@ mod tests {
     impl Route for RootRoute {
         fn name(&self) -> &str { "" }
 
-        fn method(&self) -> Vec<Method> {
-            vec![
-                Method::GET, Method::POST, Method::PUT, Method::PATCH,
-                Method::HEAD, Method::OPTIONS, Method::TRACE
-            ]
-        }
-
         fn children(&self) -> Vec<&dyn Route> {
             vec![&RouteA {}]
         }
 
-        async fn map(&self, req: Request<Incoming>) -> Result<Response<Full<Bytes>>, Box<dyn Error>> {
-            Ok(Response::builder().body(Full::from(Bytes::new())).unwrap())
+        fn up(&mut self) -> FuturePreparation
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn down(&mut self) -> FuturePreparation
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn map(&self, req: Request<Incoming>) -> FutureAction {
+            Box::pin(async {
+                Ok(Response::builder().body(Full::from(Bytes::new())).unwrap())
+            })
         }
     }
 
@@ -64,15 +75,22 @@ mod tests {
             "a"
         }
 
-        fn method(&self) -> Vec<Method> {
-            vec![
-                Method::GET, Method::POST, Method::PUT, Method::PATCH,
-                Method::HEAD, Method::OPTIONS, Method::TRACE
-            ]
-        }
-
         fn children(&self) -> Vec<&dyn Route> {
             vec![&RouteAB {}]
+        }
+
+        async fn up(&mut self) -> Result<(), Box<dyn Error>>
+        where
+            Self: Sized
+        {
+            Ok(())
+        }
+
+        async fn down(&mut self) -> Result<(), Box<dyn Error>>
+        where
+            Self: Sized
+        {
+            Ok(())
         }
 
         async fn map(&self, req: Request<Incoming>) -> Result<Response<Full<Bytes>>, Box<dyn Error>> {
@@ -85,19 +103,20 @@ mod tests {
             "b"
         }
 
-        fn method(&self) -> Vec<Method> {
-            vec![
-                Method::GET, Method::POST, Method::PUT, Method::PATCH,
-                Method::HEAD, Method::OPTIONS, Method::TRACE
-            ]
-        }
-
         fn children(&self) -> Vec<&dyn Route> {
             Vec::new()
         }
 
-        async fn map(&self, req: Request<Incoming>) -> Result<Response<Full<Bytes>>, Box<dyn Error>> {
-            Ok(Response::builder().body(Full::from(Bytes::new())).unwrap())
+        fn up(&mut self) -> FuturePreparation {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn down(&mut self) -> FuturePreparation {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn map(&self, req: Request<Incoming>) -> FutureAction {
+            Box::pin(async { Ok(Response::builder().body(Full::from(Bytes::new())).unwrap()) })
         }
     }
 
