@@ -37,6 +37,30 @@ pub fn match_route<'a>(path: &str, root: &'a dyn Route) -> Option<&'a dyn Route>
     Some(current)
 }
 
+pub fn up_all<'a>(root: &'a dyn Route) -> Pin<Box<dyn Future<Output=Result<(), Box<dyn Error + 'a>>> + 'a>> {
+    Box::pin(async move {
+        root.up().await?;
+
+        for child in root.children() {
+            up_all(child).await?;
+        }
+
+        return Ok(())
+    })
+}
+
+pub fn down_all<'a>(root: &'a dyn Route) -> Pin<Box<dyn Future<Output=Result<(), Box<dyn Error + 'a>>> + 'a>> {
+    Box::pin(async move {
+        root.down().await?;
+
+        for child in root.children() {
+            down_all(child).await?;
+        }
+
+        return Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
