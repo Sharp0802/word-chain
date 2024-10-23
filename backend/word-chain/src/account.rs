@@ -61,7 +61,7 @@ impl Route for AccountRoute {
     {
         Box::pin(async move {
             self.client.execute(r#"
-            CREATE TABLE accounts (
+            CREATE TABLE IF NOT EXISTS accounts (
                 id       TEXT PRIMARY KEY,
                 salt     TEXT,
                 password TEXT
