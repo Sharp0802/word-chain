@@ -9,6 +9,7 @@ use hyper::{Method, Request, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio_postgres::Client;
+use crate::request::read_body;
 
 pub struct AccountRoute {
     info_route: AccountInfoRoute,
@@ -100,15 +101,12 @@ impl Route for AccountRoute {
                     .unwrap())
             }
 
-            if req.body().size_hint().upper().unwrap_or(u64::MAX) > 1024 * 64 {
-                return Ok(new_response()
-                    .status(StatusCode::PAYLOAD_TOO_LARGE)
-                    .body(Full::from(Bytes::new()))
-                    .unwrap());
-            }
+            let body = match read_body(req.into_body()).await {
+                Ok(body) => body,
+                Err(e) => return Ok(e)
+            };
 
-            let bytes = req.into_body().collect().await?.to_bytes().to_vec();
-            let creation = match serde_urlencoded::from_bytes::<AccountCreationDTO>(&bytes) {
+            let creation = match serde_urlencoded::from_bytes::<AccountCreationDTO>(&body) {
                 Ok(creation) => creation,
                 Err(error) => return Ok(new_response()
                     .status(StatusCode::BAD_REQUEST)
