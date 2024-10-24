@@ -24,7 +24,6 @@ pub struct AccountInfoRoute {
 #[derive(Debug, Deserialize)]
 struct AccountCreationDTO {
     id: String,
-    salt: String,
     password: String,
 }
 
@@ -115,9 +114,12 @@ impl Route for AccountRoute {
                     .unwrap())
             };
 
+            let salt = Salt::new();
+            let passhash = Sha256::hash(&(salt.clone() + &creation.password));
+
             if let Err(error) = self.client.execute(
                 "INSERT INTO accounts (id, salt, password) VALUES ($1, $2, $3);",
-                &[&creation.id, &creation.salt, &creation.password]).await {
+                &[&creation.id, &salt, &passhash]).await {
 
                 // NOTE: Failed to insert row: Maybe duplicated identifier?
                 return Ok(new_response()
