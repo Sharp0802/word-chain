@@ -4,7 +4,7 @@ use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Response, StatusCode};
 use hyper::header::{AUTHORIZATION, WWW_AUTHENTICATE};
-use crate::encrypt::Aes256;
+use crate::encrypt::{Aes256, Salt};
 use crate::response::new_response;
 
 struct JwtKey {
@@ -29,13 +29,18 @@ lazy_static! {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Jwt {
     account_id: String,
-    timestamp: i64
+    timestamp: i64,
+    nonce: String
 }
 
 impl Jwt {
     pub fn new(account: &str) -> Self {
         let timestamp = chrono::offset::Utc::now().timestamp();
-        Self{ account_id: account.to_string(), timestamp }
+        Self{
+            account_id: account.to_string(),
+            timestamp,
+            nonce: Salt::new().value().to_string()
+        }
     }
 
     pub fn from(bearer: &str) -> Result<Self, Box<dyn std::error::Error>> {
