@@ -1,67 +1,25 @@
 mod response;
 mod route;
-mod account;
 mod encrypt;
 mod jwt;
+mod routes;
 
-use crate::account::AccountRoute;
 use crate::response::{new_response, set_response_option, ResponseOption};
-use crate::route::{down_all, match_route, up_all, FutureAction, FuturePreparation, Route};
+use routes::root::RootRoute;
+use crate::route::{down_all, match_route, up_all};
 use http_body_util::Full;
-use hyper::body::{Bytes, Incoming};
+use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper::{Request, Response};
 use hyper::StatusCode;
+use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
-use std::fmt::{Display, Formatter};
 use std::io::{stdout, Write};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
 use tokio_postgres::{Client, NoTls};
-
-struct RootRoute {
-    account_route: AccountRoute
-}
-
-impl RootRoute {
-    fn new(client: &Arc<Client>) -> RootRoute {
-        Self { account_route: AccountRoute::new(client.clone()) }
-    }
-}
-
-impl Display for RootRoute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "word_chain::main::RootRoute")
-    }
-}
-
-impl Route for RootRoute {
-    fn name(&self) -> &str { "" }
-    fn children(&self) -> Vec<&dyn Route> {
-        vec![
-            &self.account_route
-        ]
-    }
-
-    fn up(&self) -> FuturePreparation
-    { Box::pin(async { Ok(()) }) }
-
-    fn down(&self) -> FuturePreparation
-    { Box::pin(async { Ok(()) }) }
-
-    fn map(&self, _req: Request<Incoming>) -> FutureAction
-    {
-        Box::pin(async move {
-            Ok(new_response()
-                .status(StatusCode::NOT_FOUND)
-                .body(Full::from(Bytes::new()))
-                .unwrap())
-        })
-    }
-}
 
 
 struct GlobalData {

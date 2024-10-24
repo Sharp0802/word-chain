@@ -51,7 +51,7 @@ impl AccountInfoRoute {
 
 impl Display for AccountRoute {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "word_chain::account::AccountRoute")
+        write!(f, "word_chain::routes::account::AccountRoute")
     }
 }
 
@@ -138,7 +138,7 @@ impl Route for AccountRoute {
 
 impl Display for AccountInfoRoute {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "word_chain::account::AccountRoute")
+        write!(f, "word_chain::routes::account::AccountRoute")
     }
 }
 
