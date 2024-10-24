@@ -30,12 +30,30 @@ impl Error {
 
 use rand::distributions::{Alphanumeric, DistString};
 
-pub struct Salt;
+pub struct Salt {
+    value: String
+}
 
 impl Salt
 {
-    pub fn new() -> String {
-        Alphanumeric.sample_string(&mut rand::thread_rng(), 32)
+    pub fn new() -> Self {
+        Self {
+            value: Alphanumeric.sample_string(&mut rand::thread_rng(), 32)
+        }
+    }
+
+    pub fn from(salt: &str) -> Self {
+        Self {
+            value: salt.to_string()
+        }
+    }
+
+    pub fn salt(&self, key: &str) -> String {
+        Sha256::hash(&(self.value.clone() + key))
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
     }
 }
 

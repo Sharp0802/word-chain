@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use crate::jwt::Jwt;
+use crate::credentials::jwt::Jwt;
 use crate::response::new_response;
 use crate::route::{FutureAction, FuturePreparation, Route};
 use http_body_util::{Full};
@@ -8,8 +8,8 @@ use hyper::header::LOCATION;
 use hyper::{Method, Request, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio_postgres::Client;
-use crate::encrypt::{Salt, Sha256};
+use tokio_postgres::{Client, Row};
+use crate::encrypt::Salt;
 use crate::request::read_body;
 
 pub struct AccountRoute {
@@ -32,9 +32,37 @@ struct AccountViewDTO {
     id: String
 }
 
+pub struct AccountRow {
+    id: String,
+    salt: String,
+    passhash: String
+}
+
+impl AccountRow {
+    pub fn from(row: Row) -> Self {
+        Self{
+            id: row.get(0),
+            salt: row.get(1),
+            passhash: row.get(2)
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn salt(&self) -> &str {
+        &self.salt
+    }
+
+    pub fn passhash(&self) -> &str {
+        &self.passhash
+    }
+}
+
 impl AccountViewDTO {
-    fn new(id: String) -> Self {
-        Self { id }
+    fn new(id: &str) -> Self {
+        Self { id: id.to_string() }
     }
 }
 
@@ -115,11 +143,10 @@ impl Route for AccountRoute {
             };
 
             let salt = Salt::new();
-            let passhash = Sha256::hash(&(salt.clone() + &creation.password));
 
             if let Err(error) = self.client.execute(
                 "INSERT INTO accounts (id, salt, password) VALUES ($1, $2, $3);",
-                &[&creation.id, &salt, &passhash]).await {
+                &[&creation.id, &salt.value(), &salt.salt(&creation.password)]).await {
 
                 // NOTE: Failed to insert row: Maybe duplicated identifier?
                 return Ok(new_response()
@@ -182,8 +209,8 @@ impl Route for AccountInfoRoute {
             }
             else if req.method() == Method::GET {
                 let row = match self.client.query_one(r#"
-                SELECT * FROM accounts WHERE id = $1;
-                "#, &[&id]).await {
+                    SELECT * FROM accounts WHERE id = $1;
+                    "#, &[&id]).await {
                     Ok(row) => row,
                     Err(_) => return Ok(new_response()
                         .status(StatusCode::NOT_FOUND)
@@ -191,7 +218,7 @@ impl Route for AccountInfoRoute {
                         .unwrap())
                 };
 
-                let dto = AccountViewDTO::new(row.get(0));
+                let dto = AccountViewDTO::new(AccountRow::from(row).id());
 
                 let json = match serde_json::to_string::<AccountViewDTO>(&dto) {
                     Ok(json) => json,

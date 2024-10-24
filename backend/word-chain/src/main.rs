@@ -1,9 +1,9 @@
 mod response;
 mod route;
 mod encrypt;
-mod jwt;
 mod routes;
 mod request;
+mod credentials;
 
 use crate::response::{new_response, set_response_option, ResponseOption};
 use routes::root::RootRoute;
