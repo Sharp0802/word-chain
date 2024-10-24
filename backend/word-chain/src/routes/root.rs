@@ -7,15 +7,19 @@ use tokio_postgres::Client;
 use crate::routes::account::AccountRoute;
 use crate::response::new_response;
 use crate::route::{FutureAction, FuturePreparation, Route};
-
+use crate::routes::login::LoginRoute;
 
 pub struct RootRoute {
-    account_route: AccountRoute
+    account_route: AccountRoute,
+    login_route: LoginRoute
 }
 
 impl RootRoute {
     pub fn new(client: &Arc<Client>) -> RootRoute {
-        Self { account_route: AccountRoute::new(client.clone()) }
+        Self {
+            account_route: AccountRoute::new(client.clone()),
+            login_route: LoginRoute::new(client.clone())
+        }
     }
 }
 
@@ -29,7 +33,8 @@ impl Route for RootRoute {
     fn name(&self) -> &str { "" }
     fn children(&self) -> Vec<&dyn Route> {
         vec![
-            &self.account_route
+            &self.account_route,
+            &self.login_route
         ]
     }
 
