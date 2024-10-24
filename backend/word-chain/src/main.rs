@@ -15,6 +15,7 @@ use hyper::{Request, Response};
 use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
+use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
@@ -27,6 +28,12 @@ struct RootRoute {
 impl RootRoute {
     fn new(client: &Arc<Client>) -> RootRoute {
         Self { account_route: AccountRoute::new(client.clone()) }
+    }
+}
+
+impl Display for RootRoute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "word_chain::main::RootRoute")
     }
 }
 

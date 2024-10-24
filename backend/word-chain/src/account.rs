@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::jwt::Jwt;
 use crate::response::new_response;
 use crate::route::{FutureAction, FuturePreparation, Route};
@@ -45,6 +46,12 @@ impl AccountRoute {
 impl AccountInfoRoute {
     pub fn new(client: Arc<Client>) -> Self {
         Self { client }
+    }
+}
+
+impl Display for AccountRoute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "word_chain::account::AccountRoute")
     }
 }
 
@@ -126,6 +133,12 @@ impl Route for AccountRoute {
                 .body(Full::from(Bytes::new()))
                 .unwrap())
         })
+    }
+}
+
+impl Display for AccountInfoRoute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "word_chain::account::AccountRoute")
     }
 }
 

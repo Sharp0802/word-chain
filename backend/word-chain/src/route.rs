@@ -2,13 +2,14 @@ use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Response};
 use std::error::Error;
+use std::fmt::Display;
 use std::future::Future;
 use std::pin::Pin;
 
 pub type FuturePreparation<'a> = Pin<Box<dyn Future<Output=Result<(), Box<dyn Error + 'a>>> + Send + 'a>>;
 pub type FutureAction<'a> = Pin<Box<dyn Future<Output=Result<Response<Full<Bytes>>, Box<dyn Error + 'a>>> + Send + 'a>>;
 
-pub trait Route {
+pub trait Route : Display {
     fn name(&self) -> &str;
     fn children(&self) -> Vec<&dyn Route>;
     fn up(&self) -> FuturePreparation;
@@ -39,6 +40,8 @@ pub fn match_route<'a>(path: &str, root: &'a dyn Route) -> Option<&'a dyn Route>
 
 pub fn up_all<'a>(root: &'a dyn Route) -> Pin<Box<dyn Future<Output=Result<(), Box<dyn Error + 'a>>> + 'a>> {
     Box::pin(async move {
+
+        println!("Initialise {}...", root);
         root.up().await?;
 
         for child in root.children() {
@@ -51,6 +54,8 @@ pub fn up_all<'a>(root: &'a dyn Route) -> Pin<Box<dyn Future<Output=Result<(), B
 
 pub fn down_all<'a>(root: &'a dyn Route) -> Pin<Box<dyn Future<Output=Result<(), Box<dyn Error + 'a>>> + 'a>> {
     Box::pin(async move {
+
+        println!("Finalise {}...", root);
         root.down().await?;
 
         for child in root.children() {
@@ -63,12 +68,19 @@ pub fn down_all<'a>(root: &'a dyn Route) -> Pin<Box<dyn Future<Output=Result<(),
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Formatter;
     use super::*;
     use std::vec;
 
     struct RootRoute {}
     struct RouteA {}
     struct RouteAB {}
+
+    impl Display for RootRoute {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "RootRoute")
+        }
+    }
 
     impl Route for RootRoute {
         fn name(&self) -> &str { "" }
@@ -91,6 +103,12 @@ mod tests {
             Box::pin(async {
                 Ok(Response::builder().body(Full::from(Bytes::new())).unwrap())
             })
+        }
+    }
+
+    impl Display for RouteA {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "RouteA")
         }
     }
 
@@ -119,6 +137,12 @@ mod tests {
 
         async fn map(&self, req: Request<Incoming>) -> Result<Response<Full<Bytes>>, Box<dyn Error>> {
             Ok(Response::builder().body(Full::from(Bytes::new())).unwrap())
+        }
+    }
+
+    impl Display for RouteAB {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "RouteAB")
         }
     }
 
