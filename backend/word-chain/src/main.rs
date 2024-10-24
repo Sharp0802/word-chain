@@ -16,6 +16,7 @@ use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
+use std::io::{stdout, Write};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
@@ -55,13 +56,12 @@ impl Route for RootRoute {
     {
         Box::pin(async move {
             Ok(new_response()
-            .status(StatusCode::NOT_FOUND)
-            .body(Full::from(Bytes::new()))
-            .unwrap())
+                .status(StatusCode::NOT_FOUND)
+                .body(Full::from(Bytes::new()))
+                .unwrap())
         })
     }
 }
-
 
 
 struct GlobalData {
@@ -76,12 +76,10 @@ impl GlobalData {
     }
 }
 
-static GLOBAL : RwLock<Option<GlobalData>> = RwLock::new(None);
-
+static GLOBAL: RwLock<Option<GlobalData>> = RwLock::new(None);
 
 
 async fn map(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-
     let root_arc = GLOBAL.read().unwrap().as_ref().unwrap().root.clone();
 
     let route = match match_route(req.uri().path(), root_arc.as_ref()) {
@@ -106,9 +104,7 @@ async fn map(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>
     res
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-
+async fn configure() {
     dotenvy::dotenv().ok();
 
     // Connect to postgres
@@ -131,36 +127,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Err(e) = up_all(root_arc.as_ref()).await {
         panic!("Failed to initialize routes: {}", e);
     }
+    let _ = root_arc;
+}
 
-    let local = tokio::task::LocalSet::new();
-    local.spawn_local(async move {
-        tokio::signal::ctrl_c().await.unwrap();
+async fn shutdown() {
+    eprintln!("Shutting down...");
 
-        // FINALISE ALL ROUTES
-        // Critical section: If finalisation doesn't work properly,
-        // It will remain permanent sub-effect on system (especially, for DATABASE)
-        let root_arc = GLOBAL.read().unwrap().as_ref().unwrap().root.clone();
-        if let Err(e) = down_all(root_arc.as_ref()).await {
-            eprintln!("Failed to initialize routes: {}", e);
-        }
-        let _ = root_arc;
-    });
+    // FINALISE ALL ROUTES
+    // Critical section: If finalisation doesn't work properly,
+    // It will leave permanent sub-effect on system (especially, for DATABASE)
+    let root_arc = GLOBAL.read().unwrap().as_ref().unwrap().root.clone();
+    if let Err(e) = down_all(root_arc.as_ref()).await {
+        eprintln!("Failed to initialize routes: {}", e);
+    }
+    let _ = root_arc;
+
+    stdout().flush().ok();
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+
+    configure().await;
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 5000));
     let listener = TcpListener::bind(addr).await?;
 
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let io = TokioIo::new(stream);
+    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    let mut signal = std::pin::pin!(async {
+        tokio::signal::ctrl_c().await
+            .expect("failed to install SIGINT handler");
+    });
 
-        tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(map))
-                .await
-            {
-                eprintln!("Error serving connection: {:?}", err);
+    loop {
+        tokio::select! {
+            Ok((stream, _)) = listener.accept() => {
+                let io = TokioIo::new(stream);
+
+                tokio::task::spawn(async move {
+                    if let Err(err) = http1::Builder::new()
+                        .serve_connection(io, service_fn(map))
+                        .await
+                    {
+                        eprintln!("Error serving connection: {:?}", err);
+                    }
+                });
+            },
+
+            _ = &mut signal => {
+                shutdown().await;
+                break;
             }
-        });
+        }
     }
+
+    tokio::select! {
+        _ = graceful.shutdown() => {
+            eprintln!("All connections gracefully closed");
+        },
+        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+            eprintln!("Timed out waiting for connection");
+        }
+    }
+
+    Ok(())
 }
 
