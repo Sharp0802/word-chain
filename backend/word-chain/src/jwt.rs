@@ -1,10 +1,10 @@
-use crate::encrypt::aes256;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Response, StatusCode};
 use hyper::header::{AUTHORIZATION, WWW_AUTHENTICATE};
+use crate::encrypt::Aes256;
 use crate::response::new_response;
 
 struct JwtKey {
@@ -39,7 +39,7 @@ impl Jwt {
     }
 
     pub fn from(bearer: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let jwt = match aes256::decrypt(&JWT_KEY.value, bearer) {
+        let jwt = match Aes256::decrypt(&JWT_KEY.value, bearer) {
             Ok(decrypted) => decrypted,
             Err(error) => return Err(error)
         };
@@ -51,7 +51,7 @@ impl Jwt {
 
         let raw = serde_json::to_string::<Jwt>(self)?;
 
-        aes256::encrypt(&JWT_KEY.value, &raw)
+        Aes256::encrypt(&JWT_KEY.value, &raw)
     }
 
     pub fn has_expired(&self) -> bool {

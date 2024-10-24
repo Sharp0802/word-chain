@@ -23,15 +23,38 @@ impl std::error::Error for Error {}
 
 impl Error {
     fn from(msg: &str) -> Self {
-        Self{ message: msg.to_string() }
+        Self { message: msg.to_string() }
     }
 }
 
 
-pub mod aes256
-{
-    use super::*;
+use rand::distributions::{Alphanumeric, DistString};
 
+pub struct Salt;
+
+impl Salt
+{
+    pub fn new() -> String {
+        Alphanumeric.sample_string(&mut rand::thread_rng(), 32)
+    }
+}
+
+
+use sha3::Digest;
+
+pub struct Sha256;
+
+impl Sha256 {
+    pub fn hash(key: &str) -> String {
+        let digest = sha3::Sha3_256::digest(key.as_bytes()).to_vec();
+        hex::encode(&digest)
+    }
+}
+
+
+pub struct Aes256;
+
+impl Aes256 {
     pub fn encrypt(key_str: &str, plaintext: &str) -> Result<String, Box<dyn std::error::Error>> {
         let key = Key::<Aes256Gcm>::from_slice(key_str.as_bytes());
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
