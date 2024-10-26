@@ -1,16 +1,16 @@
-use std::fmt::{Display, Formatter};
-use crate::credentials::jwt::Jwt;
+use crate::credentials::tokens::AccessToken;
+use crate::encrypt::Salt;
+use crate::request::read_body;
 use crate::response::new_response;
 use crate::route::{FutureAction, FuturePreparation, Route};
-use http_body_util::{Full};
+use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::header::LOCATION;
 use hyper::{Method, Request, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use tokio_postgres::{Client, Row};
-use crate::encrypt::Salt;
-use crate::request::read_body;
 
 pub struct AccountRoute {
     info_route: AccountInfoRoute,
@@ -187,8 +187,9 @@ impl Route for AccountInfoRoute {
             let id = req.uri().path().split('/').last().unwrap();
 
             if req.method() == Method::DELETE {
-                if let Err(e) = Jwt::authorize(id, &req) {
-                    return Ok(e);
+                let _ = match AccessToken::validate_authorization(&req, &self.client).await {
+                    Ok(response) => response,
+                    Err(e) => return Ok(e)
                 };
 
                 if let Err(_) = self.client.execute(r#"
@@ -205,6 +206,8 @@ impl Route for AccountInfoRoute {
                     // The expected result (account deleted) will be occurred
                 }
 
+                // NOTE: If user uses access-token after account deleted,
+                // User can access to account that user doesn't own
                 Ok(new_response().body(Full::from(Bytes::new())).unwrap())
             }
             else if req.method() == Method::GET {
