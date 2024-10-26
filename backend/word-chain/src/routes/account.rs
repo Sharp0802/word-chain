@@ -111,9 +111,11 @@ impl Route for AccountRoute {
     fn down(&self) -> FuturePreparation
     {
         Box::pin(async move {
+            /*
             self.client.execute(r#"
                 DROP TABLE accounts;
                 "#, &[]).await?;
+             */
 
             Ok(())
         })
