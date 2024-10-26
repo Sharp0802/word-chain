@@ -64,8 +64,11 @@ pub struct Sha256;
 
 impl Sha256 {
     pub fn hash(key: &str) -> String {
-        let digest = sha3::Sha3_256::digest(key.as_bytes()).to_vec();
-        hex::encode(&digest)
+        hex::encode(&Self::hash_raw(key))
+    }
+
+    fn hash_raw(key: &str) -> Vec<u8> {
+        sha3::Sha3_256::digest(key.as_bytes()).to_vec()
     }
 }
 
@@ -74,7 +77,8 @@ pub struct Aes256;
 
 impl Aes256 {
     pub fn encrypt(key_str: &str, plaintext: &str) -> Result<String, Box<dyn std::error::Error>> {
-        let key = Key::<Aes256Gcm>::from_slice(key_str.as_bytes());
+        let key_hash = Sha256::hash_raw(key_str);
+        let key = Key::<Aes256Gcm>::from_slice(&key_hash);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
         let cipher = Aes256Gcm::new(key);
@@ -94,7 +98,8 @@ impl Aes256 {
     pub fn decrypt(key_str: &str, encrypted_data: &str) -> Result<String, Box<dyn std::error::Error>> {
         let encrypted_data = hex::decode(encrypted_data.as_bytes())?;
 
-        let key = Key::<Aes256Gcm>::from_slice(key_str.as_bytes());
+        let key_hash = Sha256::hash_raw(key_str);
+        let key = Key::<Aes256Gcm>::from_slice(&key_hash);
 
         let (nonce_arr, ciphered_data) = encrypted_data.split_at(12);
         let nonce = Nonce::from_slice(nonce_arr);
