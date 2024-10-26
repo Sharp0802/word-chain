@@ -97,7 +97,7 @@ impl Token for AccessToken {
 }
 
 impl AccessToken {
-    pub async fn validate_authorization(req: &Request<Incoming>, client: &Client) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>> {
+    pub async fn validate_authorization(req: &Request<Incoming>, client: &Client) -> Result<(AccountRow, Response<Full<Bytes>>), Response<Full<Bytes>>> {
         fn unauthorized(msg: Option<String>) -> Response<Full<Bytes>> {
             new_response()
                 .status(StatusCode::UNAUTHORIZED)
@@ -176,7 +176,7 @@ impl AccessToken {
                     .unwrap());
         }
 
-        Ok(response)
+        Ok((account, response))
     }
 
     pub async fn authorize(who: &str) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>> {
