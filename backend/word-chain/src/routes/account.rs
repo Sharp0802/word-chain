@@ -51,8 +51,8 @@ impl AccountRow {
         &self.id
     }
 
-    pub fn salt(&self) -> &str {
-        &self.salt
+    pub fn salt(&self) -> Salt {
+        Salt::from(&self.salt)
     }
 
     pub fn passhash(&self) -> &str {
@@ -124,44 +124,71 @@ impl Route for AccountRoute {
     fn map(&self, req: Request<Incoming>) -> FutureAction
     {
         Box::pin(async move {
-            if req.method() != Method::POST {
-                return Ok(new_response()
+            match req.method() {
+                &Method::POST => {
+                    let body = match read_body(req.into_body()).await {
+                        Ok(body) => body,
+                        Err(e) => return Ok(e)
+                    };
+
+                    let creation = match serde_urlencoded::from_bytes::<AccountCreationDTO>(&body) {
+                        Ok(creation) => creation,
+                        Err(error) => return Ok(new_response()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(Full::from(Bytes::from(error.to_string())))
+                            .unwrap())
+                    };
+
+                    println!("{}", creation.password);
+
+                    let salt = Salt::new();
+
+                    if let Err(error) = self.client.execute(
+                        "INSERT INTO accounts (id, salt, password) VALUES ($1, $2, $3);",
+                        &[&creation.id, &salt.value(), &salt.salt(&creation.password)]).await {
+
+                        // NOTE: Failed to insert row: Maybe duplicated identifier?
+                        return Ok(new_response()
+                            .status(StatusCode::CONFLICT)
+                            .body(Full::from(Bytes::from(error.to_string())))
+                            .unwrap());
+                    }
+
+                    Ok(new_response()
+                        .status(StatusCode::CREATED)
+                        .header(LOCATION, format!("/account/{}", creation.id))
+                        .body(Full::from(Bytes::new()))
+                        .unwrap())
+                },
+                &Method::DELETE => {
+                    let (account, _) = match AccessToken::validate_authorization(&req, &self.client).await {
+                        Ok(response) => response,
+                        Err(e) => return Ok(e)
+                    };
+
+                    if let Err(_) = self.client.execute(
+                        "DELETE FROM accounts WHERE id = $1;",
+                        &[&account.id()]).await {
+
+                        // Q: WHY DON'T WE HANDLE ERROR?
+                        // A: IT'S SAFE TO IGNORE
+
+                        // Although an authorized account should exist,
+                        // If deleting the account failed, It may be a race-condition.
+                        // But, we don't have to lock function to prevent it.
+                        // If the account is authorized in any way,
+                        // The expected result (account deleted) will be occurred
+                    }
+
+                    // NOTE: If user uses access-token after account deleted,
+                    // User can access to account that user doesn't own
+                    Ok(new_response().body(Full::from(Bytes::new())).unwrap())
+                },
+                _ => Ok(new_response()
                     .status(StatusCode::METHOD_NOT_ALLOWED)
                     .body(Full::from(Bytes::new()))
                     .unwrap())
             }
-
-            let body = match read_body(req.into_body()).await {
-                Ok(body) => body,
-                Err(e) => return Ok(e)
-            };
-
-            let creation = match serde_urlencoded::from_bytes::<AccountCreationDTO>(&body) {
-                Ok(creation) => creation,
-                Err(error) => return Ok(new_response()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body(Full::from(Bytes::from(error.to_string())))
-                    .unwrap())
-            };
-
-            let salt = Salt::new();
-
-            if let Err(error) = self.client.execute(
-                "INSERT INTO accounts (id, salt, password) VALUES ($1, $2, $3);",
-                &[&creation.id, &salt.value(), &salt.salt(&creation.password)]).await {
-
-                // NOTE: Failed to insert row: Maybe duplicated identifier?
-                return Ok(new_response()
-                    .status(StatusCode::CONFLICT)
-                    .body(Full::from(Bytes::from(error.to_string())))
-                    .unwrap());
-            }
-
-            Ok(new_response()
-                .status(StatusCode::CREATED)
-                .header(LOCATION, format!("/account/{}", creation.id))
-                .body(Full::from(Bytes::new()))
-                .unwrap())
         })
     }
 }
@@ -188,34 +215,10 @@ impl Route for AccountInfoRoute {
         Box::pin(async move {
             let id = req.uri().path().split('/').last().unwrap();
 
-            if req.method() == Method::DELETE {
-                let _ = match AccessToken::validate_authorization(&req, &self.client).await {
-                    Ok(response) => response,
-                    Err(e) => return Ok(e)
-                };
-
-                if let Err(_) = self.client.execute(r#"
-                DELETE FROM accounts WHERE id = $1;
-                "#, &[&id]).await {
-
-                    // Q: WHY DON'T WE HANDLE ERROR?
-                    // A: IT'S SAFE TO IGNORE
-
-                    // Although an authorized account should exist,
-                    // If deleting the account failed, It may be a race-condition.
-                    // But, we don't have to lock function to prevent it.
-                    // If the account is authorized in any way,
-                    // The expected result (account deleted) will be occurred
-                }
-
-                // NOTE: If user uses access-token after account deleted,
-                // User can access to account that user doesn't own
-                Ok(new_response().body(Full::from(Bytes::new())).unwrap())
-            }
-            else if req.method() == Method::GET {
-                let row = match self.client.query_one(r#"
-                    SELECT * FROM accounts WHERE id = $1;
-                    "#, &[&id]).await {
+            if req.method() == Method::GET {
+                let row = match self.client.query_one(
+                    "SELECT * FROM accounts WHERE id = $1;",
+                    &[&id]).await {
                     Ok(row) => row,
                     Err(_) => return Ok(new_response()
                         .status(StatusCode::NOT_FOUND)
