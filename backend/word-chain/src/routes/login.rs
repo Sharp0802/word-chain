@@ -1,6 +1,5 @@
 use crate::credentials::basic::BasicAuth;
 use crate::credentials::tokens::AccessToken;
-use crate::encrypt::Salt;
 use crate::response::new_response;
 use crate::route::{FutureAction, FuturePreparation, Route};
 use crate::routes::account::AccountRow;
@@ -66,9 +65,6 @@ impl Route for LoginRoute {
                             .unwrap())
                     };
 
-                    let salt = Salt::new();
-                    let passhash = salt.salt(auth.password());
-
                     let account = match self.client.query_one(
                         "SELECT * FROM accounts WHERE id = $1",
                         &[&auth.id()]).await {
@@ -80,6 +76,7 @@ impl Route for LoginRoute {
                             .unwrap())
                     };
 
+                    let passhash = account.salt().salt(auth.password());
                     if account.passhash() != passhash {
                         return Ok(new_response()
                             .status(StatusCode::UNAUTHORIZED)
