@@ -1,5 +1,5 @@
 use crate::credentials::basic::BasicAuth;
-use crate::credentials::jwt::Jwt;
+use crate::credentials::tokens::AccessToken;
 use crate::encrypt::Salt;
 use crate::response::new_response;
 use crate::route::{FutureAction, FuturePreparation, Route};
@@ -49,25 +49,16 @@ impl Route for LoginRoute {
         Box::pin(async move {
             match req.method() {
                 &Method::POST => {
-
-                    let auth = match req.headers().get(AUTHORIZATION) {
-                        Some(header) => header,
-                        None => return Ok(new_response()
+                    let auth_str = match req.headers().get(AUTHORIZATION).map(|v| v.to_str()) {
+                        Some(Ok(s)) => s,
+                        _ => return Ok(new_response()
                             .status(StatusCode::BAD_REQUEST)
                             .body(Full::from(Bytes::new()))
                             .unwrap())
                     };
 
-                    let auth_str = match auth.to_str() {
-                        Ok(auth_str) => auth_str,
-                        Err(_) => return Ok(new_response()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(Full::from(Bytes::new()))
-                            .unwrap())
-                    };
-
-                    let login = match BasicAuth::from(auth_str) {
-                        Some(login) => login,
+                    let auth = match BasicAuth::from(auth_str) {
+                        Some(auth) => auth,
                         None => return Ok(new_response()
                             .status(StatusCode::UNAUTHORIZED)
                             .header(WWW_AUTHENTICATE, "Basic realm=\"malformed\"")
@@ -75,37 +66,35 @@ impl Route for LoginRoute {
                             .unwrap())
                     };
 
-                    let account = match self.client.query_one(r#"
-                        SELECT * FROM accounts WHERE id = $1;
-                        "#, &[&login.id()]).await {
-                        Ok(account) => AccountRow::from(account),
+                    let salt = Salt::new();
+                    let passhash = salt.salt(auth.password());
+
+                    let account = match self.client.query_one(
+                        "SELECT * FROM accounts WHERE id = $1",
+                        &[&auth.id()]).await {
+                        Ok(row) => AccountRow::from(row),
                         Err(_) => return Ok(new_response()
-                            .status(StatusCode::NOT_FOUND)
+                            .status(StatusCode::UNAUTHORIZED)
+                            .header(WWW_AUTHENTICATE, "Basic realm=\"account not found\"")
                             .body(Full::from(Bytes::new()))
                             .unwrap())
                     };
 
-                    let passhash = Salt::from(account.salt()).salt(&login.password());
                     if account.passhash() != passhash {
                         return Ok(new_response()
                             .status(StatusCode::UNAUTHORIZED)
-                            .header(WWW_AUTHENTICATE, "Basic realm=\"password-mismatch\"")
+                            .header(WWW_AUTHENTICATE, "Basic realm=\"password mismatched\"")
                             .body(Full::from(Bytes::new()))
-                            .unwrap())
-                    }
-
-                    let jwt = match Jwt::new(account.id()).to_string() {
-                        Ok(jwt) => jwt,
-                        Err(e) => return Ok(new_response()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(Full::from(Bytes::from(e.to_string())))
                             .unwrap())
                     };
 
-                    Ok(new_response()
-                        .body(Full::from(Bytes::from(jwt)))
-                        .unwrap())
-                },
+                    let response = match AccessToken::authorize(account.id()).await {
+                        Ok(response) => response,
+                        Err(e) => return Ok(e)
+                    };
+
+                    Ok(response)
+                }
 
                 _ => Ok(new_response()
                     .status(StatusCode::METHOD_NOT_ALLOWED)
